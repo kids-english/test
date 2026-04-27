@@ -1,4 +1,4 @@
-<!DOCTYPE html>//曜日
+<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
@@ -14,13 +14,12 @@
         .day-labels, .answer-boxes { display: flex; gap: 4px; }
         .label-box { width: 44px; height: 44px; border: 1px solid #333; display: flex; align-items: center; justify-content: center; font-weight: bold; background: #eee; font-size: 14px; }
         
-        /* 回答枠：data-indexで「何番目の曜日か」を管理するように変更 */
-        .answer-box { width: 44px; height: 44px; border: 2px dashed #007bff; border-radius: 5px; display: flex; align-items: center; justify-content: center; background: #fff; font-size: 8px; font-weight: bold; //text-transform: uppercase; }
+        .answer-box { width: 44px; height: 44px; border: 2px dashed #007bff; border-radius: 5px; display: flex; align-items: center; justify-content: center; background: #fff; font-size: 8px; font-weight: bold; }
         .answer-box.drag-over { background: #e0efff; border-style: solid; }
 
         .options-area { border-top: 2px solid #ddd; padding-top: 20px; margin-top: 20px; }
         .options-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-        .item-btn { font-size: 14px; padding: 10px 12px; cursor: grab; border: 2px solid #007bff; border-radius: 8px; background: white; color: #007bff; font-weight: bold; }
+        .item-btn { font-size: 14px; padding: 10px 12px; cursor: pointer; border: 2px solid #007bff; border-radius: 8px; background: white; color: #007bff; font-weight: bold; min-width: 80px; }
         .item-btn.dragging { opacity: 0.3; }
 
         #message { font-weight: bold; margin-top: 20px; height: 1.5em; font-size: 18px; }
@@ -72,7 +71,6 @@
         { day: "金曜日", answer: "Friday" }, { day: "土曜日", answer: "Saturday" },
         { day: "日曜日", answer: "Sunday" }
     ];
-    // ★これが正解のマスターデータになります
     const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     
     let currentStep = 0; 
@@ -94,19 +92,28 @@
             document.getElementById('q-text').innerText = `「${quizData[currentStep].day}」`;
             document.getElementById('answer-display-normal').innerText = '';
 
-            const shuffled = [...allDays].sort(() => Math.random() - 0.5);
-            shuffled.forEach(day => {
+            // --- 選択肢を3つ選ぶロジック ---
+            const correctAnswer = quizData[currentStep].answer;
+            // 正解以外の曜日をフィルタリング
+            const otherDays = allDays.filter(day => day !== correctAnswer);
+            // 不正解からランダムに2つ抽出
+            const wrongAnswers = otherDays.sort(() => Math.random() - 0.5).slice(0, 2);
+            // 正解1個 + 不正解2個を混ぜてシャッフル
+            const finalChoices = [correctAnswer, ...wrongAnswers].sort(() => Math.random() - 0.5);
+
+            finalChoices.forEach(day => {
                 const btn = document.createElement('button');
                 btn.className = 'item-btn';
                 btn.innerText = day;
                 btn.onclick = () => {
                     document.getElementById('answer-display-normal').innerText = day;
                     speak(day);
-                    setTimeout(() => checkNormal(day), 1000);
+                    setTimeout(() => checkNormal(day), 500);
                 };
                 choicesDiv.appendChild(btn);
             });
         } else {
+            // 最終問題（ドラッグ＆ドロップ）
             document.getElementById('normal-stage').style.display = 'none';
             document.getElementById('final-stage').style.display = 'flex';
             document.getElementById('q-header').innerText = `最終問題：正しい枠にドラッグしよう！`;
@@ -117,6 +124,7 @@
                 el.className = 'item-btn';
                 el.innerText = day;
                 el.id = 'btn-' + day;
+                el.style.cursor = 'grab';
                 el.draggable = true;
                 el.addEventListener('dragstart', (e) => { draggedElement = el; el.classList.add('dragging'); speak(day); });
                 el.addEventListener('dragend', () => el.classList.remove('dragging'));
@@ -158,9 +166,15 @@
             document.getElementById('message').innerText = "✨ 正解！ ✨";
             document.getElementById('next-btn').style.display = 'block';
             document.getElementById('skip-btn').style.display = 'none';
+            // 選択肢ボタンを押せなくする（連続クリック防止）
+            document.querySelectorAll('.item-btn').forEach(b => b.style.pointerEvents = 'none');
         } else {
             playAudio('sound2.mp3');
             document.getElementById('message').innerText = "残念！";
+            setTimeout(() => {
+                document.getElementById('answer-display-normal').innerText = '';
+                document.getElementById('message').innerText = '';
+            }, 1000);
         }
     }
 
@@ -169,11 +183,10 @@
         const filledCount = Array.from(boxes).filter(b => b.innerText !== '').length;
         
         if (filledCount === 7) {
-            // ★ここが新しい判定ロジックです
             const isAllCorrect = Array.from(boxes).every(box => {
-                const idx = parseInt(box.getAttribute('data-index')); // 0, 1, 2...を取得
-                const correctText = allDays[idx]; // allDays配列から正解を取得
-                return box.innerText === correctText; // 配置された文字と配列の文字を比較
+                const idx = parseInt(box.getAttribute('data-index'));
+                const correctText = allDays[idx];
+                return box.innerText === correctText;
             });
 
             setTimeout(() => {
@@ -188,7 +201,7 @@
                     playAudio('sound2.mp3');
                     document.getElementById('message').innerText = "順番が違うよ！";
                 }
-            }, 800);
+            }, 500);
         }
     }
 
