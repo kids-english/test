@@ -1,0 +1,210 @@
+<!DOCTYPE html>//曜日
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>曜日</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background-color: #f0f8ff; padding: 20px; user-select: none; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; min-width: 350px; max-width: 95%; }
+        .question-text { font-size: 24px; font-weight: bold; margin-bottom: 20px; color: #333; }
+        .answer-zone-normal { border: 2px dashed #bbb; border-radius: 10px; height: 50px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; background: #fafafa; font-size: 20px; color: #007bff; font-weight: bold; }
+
+        .final-stage { display: none; flex-direction: column; align-items: center; gap: 10px; margin-top: 15px; }
+        .day-labels, .answer-boxes { display: flex; gap: 4px; }
+        .label-box { width: 44px; height: 44px; border: 1px solid #333; display: flex; align-items: center; justify-content: center; font-weight: bold; background: #eee; font-size: 14px; }
+        
+        /* 回答枠：data-indexで「何番目の曜日か」を管理するように変更 */
+        .answer-box { width: 44px; height: 44px; border: 2px dashed #007bff; border-radius: 5px; display: flex; align-items: center; justify-content: center; background: #fff; font-size: 8px; font-weight: bold; //text-transform: uppercase; }
+        .answer-box.drag-over { background: #e0efff; border-style: solid; }
+
+        .options-area { border-top: 2px solid #ddd; padding-top: 20px; margin-top: 20px; }
+        .options-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+        .item-btn { font-size: 14px; padding: 10px 12px; cursor: grab; border: 2px solid #007bff; border-radius: 8px; background: white; color: #007bff; font-weight: bold; }
+        .item-btn.dragging { opacity: 0.3; }
+
+        #message { font-weight: bold; margin-top: 20px; height: 1.5em; font-size: 18px; }
+        .next-btn { background: #28a745; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; margin-top: 20px; display: none; width: 100%; font-size: 16px; }
+        .skip-btn, .undo-btn { background: none; border: 1px solid #aaa; color: #888; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; margin-top: 10px; }
+        .undo-btn { color: #007bff; border-color: #007bff; margin-left: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div id="q-header" style="color: #888; font-size: 13px; margin-bottom: 10px;"></div>
+    
+    <div id="normal-stage">
+        <div class="question-text" id="q-text"></div>
+        <div class="answer-zone-normal" id="answer-display-normal"></div>
+    </div>
+
+    <div id="final-stage" class="final-stage">
+        <div class="day-labels">
+            <div class="label-box">月</div><div class="label-box">火</div><div class="label-box">水</div>
+            <div class="label-box">木</div><div class="label-box">金</div><div class="label-box">土</div><div class="label-box">日</div>
+        </div>
+        <div class="answer-boxes">
+            <div class="answer-box" id="ans-0" data-index="0"></div>
+            <div class="answer-box" id="ans-1" data-index="1"></div>
+            <div class="answer-box" id="ans-2" data-index="2"></div>
+            <div class="answer-box" id="ans-3" data-index="3"></div>
+            <div class="answer-box" id="ans-4" data-index="4"></div>
+            <div class="answer-box" id="ans-5" data-index="5"></div>
+            <div class="answer-box" id="ans-6" data-index="6"></div>
+        </div>
+        <button class="undo-btn" id="undo-button" onclick="undoLast()">ひとつ前に戻る</button>
+    </div>
+
+    <div class="options-area">
+        <div class="options-container" id="choices"></div>
+    </div>
+    
+    <p id="message"></p>
+    <button id="next-btn" class="next-btn" onclick="nextStep()">次の問題へ</button>
+    <button id="skip-btn" class="skip-btn" onclick="nextStep()">スキップ</button>
+</div>
+
+<script>
+    const quizData = [
+        { day: "月曜日", answer: "Monday" }, { day: "火曜日", answer: "Tuesday" },
+        { day: "水曜日", answer: "Wednesday" }, { day: "木曜日", answer: "Thursday" },
+        { day: "金曜日", answer: "Friday" }, { day: "土曜日", answer: "Saturday" },
+        { day: "日曜日", answer: "Sunday" }
+    ];
+    // ★これが正解のマスターデータになります
+    const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    
+    let currentStep = 0; 
+    let draggedElement = null;
+    let history = []; 
+
+    function initStep() {
+        const choicesDiv = document.getElementById('choices');
+        choicesDiv.innerHTML = '';
+        document.getElementById('message').innerText = '';
+        document.getElementById('next-btn').style.display = 'none';
+        document.getElementById('skip-btn').style.display = 'inline-block';
+        history = []; 
+
+        if (currentStep < 7) {
+            document.getElementById('normal-stage').style.display = 'block';
+            document.getElementById('final-stage').style.display = 'none';
+            document.getElementById('q-header').innerText = `第 ${currentStep + 1} 問 / 全 8 問`;
+            document.getElementById('q-text').innerText = `「${quizData[currentStep].day}」`;
+            document.getElementById('answer-display-normal').innerText = '';
+
+            const shuffled = [...allDays].sort(() => Math.random() - 0.5);
+            shuffled.forEach(day => {
+                const btn = document.createElement('button');
+                btn.className = 'item-btn';
+                btn.innerText = day;
+                btn.onclick = () => {
+                    document.getElementById('answer-display-normal').innerText = day;
+                    speak(day);
+                    setTimeout(() => checkNormal(day), 1000);
+                };
+                choicesDiv.appendChild(btn);
+            });
+        } else {
+            document.getElementById('normal-stage').style.display = 'none';
+            document.getElementById('final-stage').style.display = 'flex';
+            document.getElementById('q-header').innerText = `最終問題：正しい枠にドラッグしよう！`;
+            
+            const shuffled = [...allDays].sort(() => Math.random() - 0.5);
+            shuffled.forEach(day => {
+                const el = document.createElement('div');
+                el.className = 'item-btn';
+                el.innerText = day;
+                el.id = 'btn-' + day;
+                el.draggable = true;
+                el.addEventListener('dragstart', (e) => { draggedElement = el; el.classList.add('dragging'); speak(day); });
+                el.addEventListener('dragend', () => el.classList.remove('dragging'));
+                choicesDiv.appendChild(el);
+            });
+
+            document.querySelectorAll('.answer-box').forEach(box => {
+                box.innerText = '';
+                box.addEventListener('dragover', (e) => e.preventDefault());
+                box.addEventListener('dragenter', () => box.classList.add('drag-over'));
+                box.addEventListener('dragleave', () => box.classList.remove('drag-over'));
+                box.addEventListener('drop', (e) => {
+                    box.classList.remove('drag-over');
+                    if (draggedElement && box.innerText === '') {
+                        box.innerText = draggedElement.innerText;
+                        draggedElement.style.visibility = 'hidden';
+                        history.push({ boxId: box.id, elId: draggedElement.id });
+                        draggedElement = null;
+                        checkFinalStatus();
+                    }
+                });
+            });
+        }
+    }
+
+    function undoLast() {
+        if (history.length === 0) return;
+        const lastAction = history.pop();
+        const box = document.getElementById(lastAction.boxId);
+        const el = document.getElementById(lastAction.elId);
+        box.innerText = '';
+        el.style.visibility = 'visible';
+        document.getElementById('message').innerText = '';
+    }
+
+    function checkNormal(selected) {
+        if (selected === quizData[currentStep].answer) {
+            playAudio('sound1.mp3');
+            document.getElementById('message').innerText = "✨ 正解！ ✨";
+            document.getElementById('next-btn').style.display = 'block';
+            document.getElementById('skip-btn').style.display = 'none';
+        } else {
+            playAudio('sound2.mp3');
+            document.getElementById('message').innerText = "残念！";
+        }
+    }
+
+    function checkFinalStatus() {
+        const boxes = document.querySelectorAll('.answer-box');
+        const filledCount = Array.from(boxes).filter(b => b.innerText !== '').length;
+        
+        if (filledCount === 7) {
+            // ★ここが新しい判定ロジックです
+            const isAllCorrect = Array.from(boxes).every(box => {
+                const idx = parseInt(box.getAttribute('data-index')); // 0, 1, 2...を取得
+                const correctText = allDays[idx]; // allDays配列から正解を取得
+                return box.innerText === correctText; // 配置された文字と配列の文字を比較
+            });
+
+            setTimeout(() => {
+                if (isAllCorrect) {
+                    playAudio('sound1.mp3');
+                    document.getElementById('message').innerText = "🎊 完璧！曜日マスター達成！ 🎊";
+                    document.getElementById('next-btn').style.display = 'block';
+                    document.getElementById('next-btn').innerText = "もう一度最初から遊ぶ";
+                    document.getElementById('undo-button').style.display = 'none';
+                    document.getElementById('skip-btn').style.display = 'none';
+                } else {
+                    playAudio('sound2.mp3');
+                    document.getElementById('message').innerText = "順番が違うよ！";
+                }
+            }, 800);
+        }
+    }
+
+    function nextStep() {
+        if (currentStep < 7) { currentStep++; initStep(); }
+        else { location.reload(); }
+    }
+
+    function speak(t) {
+        const u = new SpeechSynthesisUtterance(t);
+        u.lang = 'en-US';
+        speechSynthesis.speak(u);
+    }
+    function playAudio(f) { new Audio(f).play(); }
+
+    initStep();
+</script>
+</body>
+</html>

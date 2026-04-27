@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数字マスター：1-10（5問構成）</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background-color: #fdf5e6; padding: 20px; user-select: none; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; min-width: 350px; max-width: 95%; }
+        
+        .question-text { font-size: 24px; font-weight: bold; margin-bottom: 20px; color: #333; }
+        .answer-zone-normal { border: 2px dashed #bbb; border-radius: 10px; height: 50px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; background: #fafafa; font-size: 20px; color: #007bff; font-weight: bold; }
+
+        /* 最終パズル用 */
+        .final-stage { display: none; flex-direction: column; align-items: center; gap: 10px; margin-top: 15px; }
+        .grid-container { display: flex; justify-content: center; gap: 8px; }
+        
+        .label-box { width: 60px; height: 50px; border: 1px solid #333; display: flex; align-items: center; justify-content: center; font-weight: bold; background: #eee; font-size: 18px; }
+        .answer-box { width: 60px; height: 50px; border: 2px dashed #007bff; border-radius: 5px; display: flex; align-items: center; justify-content: center; background: #fff; font-size: 10px; font-weight: bold; cursor: pointer; }
+        .answer-box.drag-over { background: #e0efff; border-style: solid; }
+
+        /* 選択肢ボタン */
+        .options-area { border-top: 2px solid #ddd; padding-top: 20px; margin-top: 20px; }
+        .options-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+        .item-btn { font-size: 16px; padding: 12px 20px; cursor: grab; border: 2px solid #007bff; border-radius: 8px; background: white; color: #007bff; font-weight: bold; min-width: 80px; }
+        .item-btn.dragging { opacity: 0.3; }
+
+        #message { font-weight: bold; margin-top: 20px; height: 1.5em; font-size: 18px; }
+        .next-btn { background: #28a745; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; margin-top: 20px; display: none; width: 100%; font-size: 16px; }
+        .skip-btn, .undo-btn, .back-home { background: none; border: 1px solid #aaa; color: #888; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; margin-top: 10px; text-decoration: none; display: inline-block; }
+        .undo-btn { color: #007bff; border-color: #007bff; margin-left: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div id="q-header" style="color: #888; font-size: 13px; margin-bottom: 10px;"></div>
+    
+    <div id="normal-stage">
+        <div class="question-text" id="q-text"></div>
+        <div class="answer-zone-normal" id="answer-display-normal"></div>
+    </div>
+
+    <div id="final-stage" class="final-stage">
+        <p id="final-task-text" style="font-size: 14px; font-weight: bold;"></p>
+        <div class="grid-container" id="label-grid"></div>
+        <div class="grid-container" id="answer-grid"></div>
+        <button class="undo-btn" id="undo-button" onclick="undoLast()">ひとつ前に戻る</button>
+    </div>
+
+    <div class="options-area">
+        <div class="options-container" id="choices"></div>
+    </div>
+    
+    <p id="message"></p>
+    <button id="next-btn" class="next-btn" onclick="nextStep()">次へ進む</button>
+
+    <div id="final-options" style="display: none; margin-top: 20px; flex-direction: column; gap: 10px; align-items: center;">
+        <button onclick="startReverseMode()" class="item-btn" style="width: 250px; background: #ffc107; color: #333; border: none; line-height: 1.5;">
+            🔄 英語 → 日本語 に挑戦！
+        </button>
+        
+        <a href="chapter3.html" class="item-btn" style="width: 250px; text-decoration: none; background: #28a745; color: white; border: none; line-height: 1.5;">
+            ➡️ 次のチャプターへ
+        </a>
+
+        <a href="top.html" class="item-btn" style="width: 250px; text-decoration: none; background: #6c757d; color: white; border: none; line-height: 1.5;">
+            🏠 トップページに戻る
+        </a>
+    </div>
+    <div id="control-btns">
+        <button id="skip-btn" class="skip-btn" onclick="nextStep()">スキップ</button>
+        <a href="top.html" class="back-home">メニューに戻る</a>
+    </div>
+</div>
+
+<script>
+    const allNumbers = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
+    let quizData = [];
+    let currentStep = 0; // 0-4: 通常問題(5問), 5: パズル1, 6: パズル2
+    let draggedElement = null;
+    let history = []; 
+
+    // 通常問題を5問準備
+    function prepareQuiz() {
+        const indices = [...Array(10).keys()];
+        const shuffledIndices = indices.sort(() => Math.random() - 0.5).slice(0, 5); // 5問ピックアップ
+        quizData = shuffledIndices.map(i => ({ num: i + 1, answer: allNumbers[i] }));
+    }
+
+    // ★英語→日本語モードをスタートさせる関数
+    function startReverseMode() {
+    	// クイズデータを「英語が問題、数字が答え」に入れ替える
+    	quizData = quizData.map(item => {
+        	return { num: item.answer, answer: item.num.toString() }; 
+    	});
+    
+    	// 最初の問題に戻す
+    	currentStep = 0;
+    
+    	// 画面の表示をリセット
+    	document.getElementById('final-options').style.display = 'none';
+    	document.getElementById('control-btns').style.display = 'block';
+    
+    	// クイズ再開
+    	initStep();
+    
+    	// 問題文の表示形式を少し変えるための調整
+    	document.getElementById('q-text').innerText = `「${quizData[currentStep].num}」は何番？`;
+    }
+
+    function initStep() {
+        const choicesDiv = document.getElementById('choices');
+        choicesDiv.innerHTML = '';
+        document.getElementById('message').innerText = '';
+        document.getElementById('next-btn').style.display = 'none';
+        document.getElementById('skip-btn').style.display = (currentStep < 5) ? 'inline-block' : 'none';
+        history = [];
+
+        if (currentStep < 5) {
+            // 通常クイズ（3択）
+            document.getElementById('normal-stage').style.display = 'block';
+            document.getElementById('final-stage').style.display = 'none';
+            document.getElementById('q-header').innerText = `第 ${currentStep + 1} 問 / 全 7 ステップ`;
+            document.getElementById('q-text').innerText = `「${quizData[currentStep].num}」は英語で？`;
+            document.getElementById('answer-display-normal').innerText = '';
+
+            // ★ 選択肢を作成
+            const correctAnswer = quizData[currentStep].answer;
+            // 正解以外の「数字」または「英語」のリストを作る
+            const isReverse = isNaN(quizData[currentStep].num); // 問題が英語なら逆モード
+            
+            let otherOptions;
+            if (isReverse) {
+                // 逆モード時：数字(1-10)から不正解を選ぶ
+                otherOptions = ["1","2","3","4","5","6","7","8","9","10"].filter(n => n !== correctAnswer);
+            } else {
+                // 通常モード時：英語(One-Ten)から不正解を選ぶ
+                otherOptions = allNumbers.filter(n => n !== correctAnswer);
+            }
+
+            const wrongAnswers = otherOptions.sort(() => Math.random() - 0.5).slice(0, 2);
+            const threeChoices = [correctAnswer, ...wrongAnswers].sort(() => Math.random() - 0.5);
+
+            threeChoices.forEach(text => {
+                const btn = document.createElement('button');
+                btn.className = 'item-btn';
+                btn.innerText = text;
+                btn.onclick = () => {
+                    document.getElementById('answer-display-normal').innerText = text;
+                    // 音声：数字なら対応する英語を、英語ならそのまま読み上げ
+                    isNaN(text) ? speak(text) : speak(allNumbers[parseInt(text)-1]);
+                    setTimeout(() => checkNormal(text), 600);
+                };
+                choicesDiv.appendChild(btn);
+            });
+
+
+        } else {
+            // パズルモード（分割）
+            document.getElementById('normal-stage').style.display = 'none';
+            document.getElementById('final-stage').style.display = 'flex';
+            
+            let startIdx, endIdx;
+            if (currentStep === 5) {
+                document.getElementById('q-header').innerText = `最終パズル その1 (1～5)`;
+                document.getElementById('final-task-text').innerText = "1から5を順番に並べよう！";
+                startIdx = 0; endIdx = 5;
+            } else {
+                document.getElementById('q-header').innerText = `最終パズル その2 (6～10)`;
+                document.getElementById('final-task-text').innerText = "6から10を順番に並べよう！";
+                startIdx = 5; endIdx = 10;
+            }
+            
+            setupFinalGrids(startIdx, endIdx);
+            const currentRange = allNumbers.slice(startIdx, endIdx).sort(() => Math.random() - 0.5);
+
+            currentRange.forEach(text => {
+                const el = document.createElement('div');
+                el.className = 'item-btn';
+                el.innerText = text;
+                el.id = 'btn-' + text;
+                el.draggable = true;
+                el.addEventListener('dragstart', (e) => { draggedElement = el; el.classList.add('dragging'); speak(text); });
+                el.addEventListener('dragend', () => el.classList.remove('dragging'));
+                choicesDiv.appendChild(el);
+            });
+        }
+    }
+
+    function setupFinalGrids(start, end) {
+        const labelGrid = document.getElementById('label-grid');
+        const answerGrid = document.getElementById('answer-grid');
+        labelGrid.innerHTML = ''; answerGrid.innerHTML = '';
+
+        const isReverse = isNaN(quizData[0].num); // 逆モード判定
+
+        for (let i = start; i < end; i++) {
+            const lbl = document.createElement('div');
+            lbl.className = 'label-box';
+            // ★ 逆モードならラベルを「英語（One...）」に、通常なら「数字（1...）」にする
+            lbl.innerText = isReverse ? allNumbers[i] : (i + 1);
+            lbl.style.fontSize = isReverse ? "10px" : "18px"; // 英語だと長いので少し小さく
+            labelGrid.appendChild(lbl);
+
+            const box = document.createElement('div');
+            box.className = 'answer-box';
+            box.id = 'ans-' + i;
+            box.dataset.index = i;
+            // ...以下dropイベントなどはそのまま...
+            box.addEventListener('dragover', (e) => e.preventDefault());
+            box.addEventListener('dragenter', () => box.classList.add('drag-over'));
+            box.addEventListener('dragleave', () => box.classList.remove('drag-over'));
+            box.addEventListener('drop', (e) => {
+                box.classList.remove('drag-over');
+                if (draggedElement && box.innerText === '') {
+                    box.innerText = draggedElement.innerText;
+                    draggedElement.style.visibility = 'hidden';
+                    history.push({ boxId: box.id, elId: draggedElement.id });
+                    draggedElement = null;
+                    checkFinalStatus(start, end);
+                }
+            });
+            answerGrid.appendChild(box);
+        }
+
+        // ★ 選択肢（チップ）もモードに合わせて切り替え
+        const choicesDiv = document.getElementById('choices');
+        choicesDiv.innerHTML = '';
+        
+        // 逆モードなら数字のチップ(1-10)、通常なら英語のチップ(One-Ten)
+        const chips = isReverse 
+            ? ["1","2","3","4","5","6","7","8","9","10"].slice(start, end)
+            : allNumbers.slice(start, end);
+
+        chips.sort(() => Math.random() - 0.5).forEach(text => {
+            const el = document.createElement('div');
+            el.className = 'item-btn';
+            el.innerText = text;
+            el.id = 'btn-' + text;
+            el.draggable = true;
+            el.addEventListener('dragstart', (e) => { 
+                draggedElement = el; 
+                el.classList.add('dragging'); 
+                // 音声読み上げ
+                isNaN(text) ? speak(text) : speak(allNumbers[parseInt(text)-1]);
+            });
+            el.addEventListener('dragend', () => el.classList.remove('dragging'));
+            choicesDiv.appendChild(el);
+        });
+    }
+
+    function undoLast() {
+        if (history.length === 0) return;
+        const last = history.pop();
+        document.getElementById(last.boxId).innerText = '';
+        document.getElementById(last.elId).style.visibility = 'visible';
+    }
+
+    function checkNormal(selected) {
+        if (selected === quizData[currentStep].answer) {
+            playAudio('sound1.mp3');
+            document.getElementById('message').innerText = "✨ 正解！ ✨";
+            document.getElementById('next-btn').style.display = 'block';
+        } else {
+            playAudio('sound2.mp3');
+            document.getElementById('message').innerText = "残念！";
+        }
+    }
+
+    function checkFinalStatus(start, end) {
+        const boxes = document.querySelectorAll('.answer-box');
+        const filled = Array.from(boxes).filter(b => b.innerText !== '');
+        
+        if (filled.length === 5) {
+            const isReverse = isNaN(quizData[0].num);
+            const isAllCorrect = Array.from(boxes).every(box => {
+                const idx = parseInt(box.dataset.index);
+                // ★ 逆モードなら「数字」が一致、通常なら「英語」が一致
+                const expected = isReverse ? (idx + 1).toString() : allNumbers[idx];
+                return box.innerText === expected;
+            });
+            // ...以下クリア判定演出などはそのまま...
+
+        setTimeout(() => {
+            if (isAllCorrect) {
+                playAudio('sound1.mp3');
+                
+                if (currentStep === 5) {
+                    // 前半クリア時
+                    document.getElementById('message').innerText = "✨ 前半クリア！次へ進もう！ ✨";
+                    document.getElementById('next-btn').style.display = 'block';
+                } else {
+                    // ★全問（後半）クリア時
+                    document.getElementById('message').innerText = "🎊 全問クリア！数字マスター！ 🎊";
+                    document.getElementById('next-btn').style.display = 'none'; // 通常の次へを隠す
+                    document.getElementById('final-options').style.display = 'flex'; // 選択肢を出す
+                    document.getElementById('undo-button').style.display = 'none';
+                    document.getElementById('control-btns').style.display = 'none'; // 下のスキップ等を隠す
+                }
+            } else {
+                playAudio('sound2.mp3');
+                document.getElementById('message').innerText = "順番が違うよ！";
+            }
+        }, 800);
+    }
+}
+
+    function nextStep() {
+        if (currentStep < 6) { currentStep++; initStep(); }
+        else { location.reload(); }
+    }
+
+    function speak(t) {
+        const u = new SpeechSynthesisUtterance(t);
+        u.lang = 'en-US';
+        speechSynthesis.speak(u);
+    }
+    function playAudio(f) { new Audio(f).play(); }
+
+    prepareQuiz();
+    initStep();
+</script>
+</body>
+</html>
